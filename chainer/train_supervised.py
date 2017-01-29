@@ -73,8 +73,12 @@ parser.add_argument('--image_size', default=256, type=int)
 ## Added
 parser.add_argument('--groundtruth', default='groundtruth', type=str,
                     help='groundtruth images must have same name as training image')
+parser.add_argument('--folder', '-f', default='', type=str,
+                    help='output folder for model, loss files')
 parser.add_argument('--width', default=181, type=int)
 parser.add_argument('--height', default=217, type=int)
+parser.add_argument('--feature_layer', default=2, type=int)
+parser.add_argument('--validate', default=0, type=int)
 args = parser.parse_args()
 
 print(args)
@@ -84,13 +88,35 @@ batchsize = args.batchsize
 # Added
 width = args.width
 height = args.height
+output_folder = args.folder
+feature_layer = args.feature_layer
+validate = args.validate # 0 for trianing, 1 for validation
+
+# Check whether to train or run validation
+
+
+
+# Create output folder
+if output_folder != '':
+    # Check if output folder exist
+    if not os.path.isdir(output_folder):
+        print("Creating dir {}".format(os.path.abspath(output_folder)))
+        os.mkdir(output_folder)
+        os.mkdir(output_folder+"models/")
+    else:
+        print("folder {} exists".format((output_folder)))
 
 # For graph plotting
 x_axis, y_axis = [], []
 first_plot = True
 
+# Write all options/args into file
+file = open(output_folder+'args.txt','w')
+file.write(str(args))
+file.close()
+
 # Write loss value to file
-file = open('loss.csv','w')
+file = open(output_folder+'loss.csv','w')
 file.write("X,EPOCH,ITER,LOSS\n")
 count = 0
 
@@ -122,6 +148,8 @@ n_iter = int(n_data / batchsize)
 print(n_iter, 'iterations,', n_epoch, 'epochs')
 
 model = FastStyleNet()
+
+# Loss network?
 vgg = VGG()
 serializers.load_npz('vgg16.model', vgg)
 if args.initmodel:
@@ -188,18 +216,20 @@ for epoch in range(n_epoch):
         # feature = vgg(xc)
         feature_hat = vgg(y)
 
-        L_feat = lambda_f * F.mean_squared_error(Variable(feature_groudtruth[2].data), feature_groudtruth[2]) # compute for only the output of layer conv3_3
+        
+        L_feat = lambda_f * F.mean_squared_error(Variable(feature_groudtruth[feature_layer].data), feature_hat[feature_layer]) # compute for only the output of layer conv3_3
 
         L_style = Variable(xp.zeros((), dtype=np.float32))
         for f, f_hat, g_s in zip(feature_groudtruth, feature_hat, gram_s):
-            L_style += lambda_s * F.mean_squared_error(gram_matrix(f_hat), Variable(g_s.data))
+            # L_style += lambda_s * F.mean_squared_error(gram_matrix(f_hat), Variable(g_s.data))
+            L_style += lambda_s * F.mean_squared_error(gram_matrix(f_hat), gram_matrix(f))
 
         # L_tv = lambda_tv * total_variation(y)
         # L = L_feat + L_style + L_tv
         # print("original Lost:" + str(L.data))
 
 
-        # NEW LOSS: Difference between real IMG and y for all img in batch
+        # # NEW LOSS: Difference between real IMG and y for all img in batch
         # lambda_p = 1.0 # To accelerate learning
         # L_pixel = Variable(xp.zeros((), dtype=np.float32))
         # for j in range(batchsize):
@@ -259,15 +289,26 @@ for epoch in range(n_epoch):
         count += 1
         
         if args.checkpoint > 0 and i % args.checkpoint == 0:
-            serializers.save_npz('models/{}_{}_{}.model'.format(output, epoch, i), model)
-            serializers.save_npz('models/{}_{}_{}.state'.format(output, epoch, i), O)
+            serializers.save_npz(output_folder+'models/{}_{}_{}.model'.format(output, epoch, i), model)
+            serializers.save_npz(output_folder+'models/{}_{}_{}.state'.format(output, epoch, i), O)
 
     print('save "style.model"')
-    serializers.save_npz('models/{}_{}.model'.format(output, epoch), model)
-    serializers.save_npz('models/{}_{}.state'.format(output, epoch), O)
+    serializers.save_npz(output_folder+'models/{}_{}.model'.format(output, epoch), model)
+    serializers.save_npz(output_folder+'models/{}_{}.state'.format(output, epoch), O)
 
-serializers.save_npz('models/{}.model'.format(output), model)
-serializers.save_npz('models/{}.state'.format(output), O)
+serializers.save_npz(output_folder+'models/{}.model'.format(output), model)
+serializers.save_npz(output_folder+'models/{}.state'.format(output), O)
+
+
+#             serializers.save_npz('models/{}_{}_{}.model'.format(output, epoch, i), model)
+#             serializers.save_npz('models/{}_{}_{}.state'.format(output, epoch, i), O)
+
+#     print('save "style.model"')
+#     serializers.save_npz('models/{}_{}.model'.format(output, epoch), model)
+#     serializers.save_npz('models/{}_{}.state'.format(output, epoch), O)
+
+# serializers.save_npz('models/{}.model'.format(output), model)
+# serializers.save_npz('models/{}.state'.format(output), O)
 
 
 
